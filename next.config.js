@@ -1,16 +1,14 @@
-/* eslint-disable */
-const withBundleAnalyzer = require('@next/bundle-analyzer')({
-  enabled: process.env.ANALYZE === 'true',
-});
+/** @type {import('next').NextConfig} */
+const ENV = process.env.NEXT_PUBLIC_ENV; // set by pipeline: development/test/stage
 
-module.exports = withBundleAnalyzer({
-  poweredByHeader: false,
-  trailingSlash: true,
-  basePath: '/my-landing',
-  assetPrefix: '/my-landing',
+let basePath = '/Next'; // default for development
+if (ENV === 'test') basePath = '/Next/test';
+if (ENV === 'stage') basePath = '/Next/stage';
+
+const nextConfig = {
   reactStrictMode: true,
-  eslint: {
-    ignoreDuringBuilds: true, // <- completely ignore ESLint errors during build
-  },
-});
+  basePath: basePath,
+  assetPrefix: basePath,
+}
 
+module.exports = nextConfig;

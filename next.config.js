@@ -5,14 +5,8 @@ let basePath = '/Next';
 if (ENV === 'test') basePath = '/Next/test';
 if (ENV === 'stage') basePath = '/Next/stage';
 
-const nextConfig = {
+module.exports = {
   reactStrictMode: true,
-
-  output: 'export',              // ⭐ REQUIRED
-  images: { unoptimized: true }, // ⭐ REQUIRED
-
   basePath,
   assetPrefix: basePath,
 };
-
-module.exports = nextConfig;

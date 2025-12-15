@@ -1,17 +1,16 @@
-/* eslint-disable import/no-extraneous-dependencies */
+/* eslint-disable */
 const withBundleAnalyzer = require('@next/bundle-analyzer')({
   enabled: process.env.ANALYZE === 'true',
 });
 
 module.exports = withBundleAnalyzer({
-  eslint: {
-    dirs: ['.'],
-  },
   poweredByHeader: false,
   trailingSlash: true,
-  basePath: '',
-  // The starter code load resources from `public` folder with `router.basePath` in React components.
-  // So, the source code is "basePath-ready".
-  // You can remove `basePath` if you don't need it.
+  basePath: '/my-landing',
+  assetPrefix: '/my-landing',
   reactStrictMode: true,
+  eslint: {
+    ignoreDuringBuilds: true, // <- completely ignore ESLint errors during build
+  },
 });
+

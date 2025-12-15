@@ -42,6 +42,7 @@ pipeline {
         }
     }
 
+    /*
     post {
         success {
             sh """
@@ -58,4 +59,6 @@ pipeline {
             """
         }
     }
+    */
 }
+✅ Now your

@@ -5,15 +5,14 @@ pipeline {
         REMOTE_USER = "ubuntu"
         REMOTE_HOST = "13.61.68.173"
         PROJECT = "Next"
-           SLACK_WEBHOOK = credentials('SLACK_WEBHOOK')
+        ENV_NAME = "${BRANCH_NAME}"          // ENV_NAME ab environment me
+        SLACK_WEBHOOK = credentials('SLACK_WEBHOOK')
     }
 
     stages {
         stage('Deploy') {
             steps {
                 script {
-                    // Branch name as environment
-                    def ENV_NAME = env.BRANCH_NAME
                     def PROJECT_DIR = "/var/www/html/${ENV_NAME}/${PROJECT}"
 
                     sshagent(['jenkins-deploy-key']) {
@@ -41,7 +40,7 @@ pipeline {
         }
     }
 
-  post {
+    post {
         success {
             sh """
             curl -X POST -H 'Content-type: application/json' \
@@ -57,5 +56,4 @@ pipeline {
             """
         }
     }
-}
 }

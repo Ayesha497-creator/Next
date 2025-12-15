@@ -28,9 +28,9 @@ pipeline {
                             npm install
                               
                                 npm run build -- --mode ${ENV_NAME}
-                             pm2 startOrRestart ecosystem.config.js
-                                pm2 save
-                            fi
+                             pm2 start npm --name "Next-${ENV_NAME}" -- start
+                              pm2 save
+                              fi
 
                             if [ "${PROJECT}" = "laravel" ]; then
                                 php artisan optimize

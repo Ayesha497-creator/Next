@@ -5,7 +5,7 @@ pipeline {
         REMOTE_USER = "ubuntu"
         REMOTE_HOST = "13.61.68.173"
         PROJECT = "Next"
-        // SLACK_WEBHOOK = "https://hooks.slack.com/services/..."
+           SLACK_WEBHOOK = credentials('SLACK_WEBHOOK')
     }
 
     stages {
@@ -41,9 +41,21 @@ pipeline {
         }
     }
 
-    // Optional post block
-    // post {
-    //     success { ... }
-    //     failure { ... }
-    // }
+  post {
+        success {
+            sh """
+            curl -X POST -H 'Content-type: application/json' \
+            --data '{"text":"✅ ${PROJECT} → ${ENV_NAME} deployed successfully!"}' \
+            $SLACK_WEBHOOK
+            """
+        }
+        failure {
+            sh """
+            curl -X POST -H 'Content-type: application/json' \
+            --data '{"text":"❌ ${PROJECT} → ${ENV_NAME} deployment failed!"}' \
+            $SLACK_WEBHOOK
+            """
+        }
+    }
+}
 }

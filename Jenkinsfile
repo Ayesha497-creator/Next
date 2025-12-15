@@ -25,10 +25,9 @@ pipeline {
                             git pull origin ${ENV_NAME}
 
                             if [ "${PROJECT}" = "vue" ] || [ "${PROJECT}" = "next" ]; then
-                                npm install
+                              
                                 npm run build -- --mode ${ENV_NAME}
-                              pm2 startOrRestart npm --name "Next-development" -- start -p 3000
-
+                              pm2 startOrRestart npm --name "Next-${ENV_NAME}" -- start
                                 pm2 save
                             fi
 

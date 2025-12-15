@@ -27,7 +27,8 @@ pipeline {
                             if [ "${PROJECT}" = "vue" ] || [ "${PROJECT}" = "next" ]; then
                                 npm install
                                 npm run build -- --mode ${ENV_NAME}
-                                pm2 startOrRestart ecosystem.config.js --env ${ENV_NAME}
+                               pm2 startOrRestart ecosystem.config.js
+
                                 pm2 save
                             fi
 

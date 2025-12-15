@@ -28,7 +28,7 @@ pipeline {
                             if [ "${PROJECT}" = "vue" ] || [ "${PROJECT}" = "next" ]; then
                             npm install
                               
-                                npm run build -- --mode ${ENV_NAME}
+                                npm run build 
                            
                               pm2 start npm --name "Next-${ENV_NAME}" -- start
                               pm2 save

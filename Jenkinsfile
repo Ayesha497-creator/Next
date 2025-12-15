@@ -6,7 +6,7 @@ pipeline {
         REMOTE_HOST = "13.61.68.173"
         PROJECT = "Next"
         ENV_NAME = "${BRANCH_NAME}"          // ENV_NAME ab environment me
-        SLACK_WEBHOOK = credentials('SLACK_WEBHOOK')
+       // SLACK_WEBHOOK = credentials('SLACK_WEBHOOK')
     }
 
     stages {

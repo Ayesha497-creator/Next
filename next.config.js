@@ -9,6 +9,4 @@ module.exports = {
   reactStrictMode: true,
   basePath,
   assetPrefix: basePath,
-  output: 'export',
-  images: { unoptimized: true },
 };

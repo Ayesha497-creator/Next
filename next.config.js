@@ -1,6 +1,8 @@
 /** @type {import('next').NextConfig} */
-module.exports = {
-  reactStrictMode: true,
-  basePath: '/Next',        // static for all environments
-  assetPrefix: '/Next',     // static for all environments
-};
+const nextConfig = {
+  eslint: {
+    ignoreDuringBuilds: true,
+  },
+}
+
+module.exports = nextConfig

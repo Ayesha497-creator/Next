@@ -1,4 +1,5 @@
 
+
 pipeline {
     agent any
 
@@ -6,7 +7,7 @@ pipeline {
         REMOTE_USER = "ubuntu"
         REMOTE_HOST = "13.61.68.173"
         PROJECT = "Next"
-        ENV_NAME = "${BRANCH_NAME}"          // ENV_NAME ab environment me
+        ENV_NAME = "${BRANCH_NAME}"          
        // SLACK_WEBHOOK = credentials('SLACK_WEBHOOK')
     }
 
@@ -25,18 +26,17 @@ pipeline {
 
                             git pull origin ${ENV_NAME}
 
-                            if [ "${PROJECT}" = "vue" ] || [ "${PROJECT}" = "next" ]; then
-                        
-                              
-                                npm run build 
-                           
-                              pm2 start npm --name "Next-${ENV_NAME}" -- start
-                              pm2 save
-                            fi
+                     if [ "${PROJECT}" = "vue" ] || [ "${PROJECT}" = "next" ]; then
+                        npm run build
+                    if [ "${PROJECT}" = "next" ]; then
+                    pm2 restart "Next-${ENV_NAME}"
+                    pm2 save
 
-                            if [ "${PROJECT}" = "laravel" ]; then
-                                php artisan optimize
-                            fi
+                    fi
+                    elif [ "${PROJECT}" = "laravel" ]; then
+                    php artisan optimize
+                        fi
+
                         '
                         """
                     }

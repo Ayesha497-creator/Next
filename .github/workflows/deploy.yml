@@ -20,10 +20,13 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Set Initial Failure Msg
-        run: echo "FAILURE_MSG=SonarQube Analysis" >> $GITHUB_ENV
-
+      # Stage 1: Sonar Scan
       - name: Run Sonar Scan
+        id: sonar_scan
+        run: echo "FAILURE_MSG=SonarQube Analysis" >> $GITHUB_ENV # Pehle set kar diya
+        continue-on-error: false
+        
+      - name: Sonar Execution
         uses: sonarsource/sonarqube-scan-action@v2
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
@@ -35,16 +38,17 @@ jobs:
             -Dsonar.javascript.node.maxspace=4096
             -Dsonar.exclusions=**/node_modules/**,**/vendor/**,**/public/packages/**
 
+      # Stage 2: Quality Gate
       - name: Quality Gate
         id: qg
+        run: echo "FAILURE_MSG=Quality Gate Failed" >> $GITHUB_ENV # Update msg
+        
+      - name: Check QG
         uses: sonarsource/sonarqube-quality-gate-action@v1
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
 
-      - name: Update Failure Msg if QG Fails
-        if: failure() && steps.qg.outcome == 'failure'
-        run: echo "FAILURE_MSG=Quality Gate Failed" >> $GITHUB_ENV
-
+      # Stage 3: Deploy
       - name: Deploy
         if: success()
         run: |
@@ -59,17 +63,19 @@ jobs:
             cd ${PROJECT_DIR}
             git pull origin ${{ github.ref_name }}
 
-            if [ "${{ env.PROJECT }}" = "vue" ] || [ "${{ env.PROJECT }}" = "next" ]; then
+            # Next.js case-sensitivity fix
+            if [ "${{ env.PROJECT }}" = "vue" ] || [ "${{ env.PROJECT }}" = "Next" ] || [ "${{ env.PROJECT }}" = "next" ]; then
                 npm install
                 npm run build 
-                if [ "${{ env.PROJECT }}" = "next" ]; then
-                    pm2 restart "Next-${{ github.ref_name }}"
+                if [ "${{ env.PROJECT }}" = "Next" ] || [ "${{ env.PROJECT }}" = "next" ]; then
+                    pm2 restart "Next-${{ github.ref_name }}" || pm2 start npm --name "Next-${{ github.ref_name }}" -- start
                 fi
             elif [ "${{ env.PROJECT }}" = "laravel" ]; then
                 php artisan optimize
             fi
           EOF
 
+      # Final Notification
       - name: Post Actions (Slack Notification)
         if: always()
         run: |
@@ -79,3 +85,4 @@ jobs:
             MESSAGE="❌ *${{ env.PROJECT }}* (${{ github.ref_name }}) Failed at: *${{ env.FAILURE_MSG }}* ⚠️"
           fi
           curl -X POST -H 'Content-type: application/json' --data "{\"text\":\"$MESSAGE\"}" ${{ env.SLACK_WEBHOOK }}
+          

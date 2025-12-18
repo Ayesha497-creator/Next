@@ -77,12 +77,21 @@ jobs:
           EOF
 
       # Stage 4: Final Notification (Always Runs)
-      - name: Post Actions (Slack Notification)
+     - name: Post Actions (Slack Notification)
         if: always()
         run: |
+          # Job status check
           if [ "${{ job.status }}" == "success" ]; then
-            MESSAGE="✅ *${{ env.PROJECT }}* (${{ github.ref_name }}) Deployed Successfully! 🚀"
+            EMOJI="✅"
+            TEXT="Deployed Successfully! 🚀"
           else
-            MESSAGE="❌ *${{ env.PROJECT }}* (${{ github.ref_name }}) Failed at: *${{ env.FAILURE_MSG }}* ⚠️"
+            EMOJI="❌"
+            TEXT="Failed at: *${{ env.FAILURE_MSG }}* ⚠️"
           fi
-          curl -X POST -H 'Content-type: application/json' --data "{\"text\":\"$MESSAGE\"}" ${{ env.SLACK_WEBHOOK }}
+
+          # Final Payload
+          MESSAGE="${EMOJI} *${{ env.PROJECT }}* (${{ github.ref_name }}) ${TEXT}"
+
+          curl -X POST -H 'Content-type: application/json' \
+          --data "{\"text\":\"${MESSAGE}\"}" \
+          "${{ secrets.SLACK_WEBHOOK }}"

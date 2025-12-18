@@ -21,11 +21,9 @@ jobs:
           fetch-depth: 0
 
       # Stage 1: Sonar Scan
-      - name: Run Sonar Scan
-        id: sonar_scan
-        run: echo "FAILURE_MSG=SonarQube Analysis" >> $GITHUB_ENV # Pehle set kar diya
-        continue-on-error: false
-        
+      - name: Set Sonar Failure Msg
+        run: echo "FAILURE_MSG=SonarQube Analysis" >> $GITHUB_ENV
+
       - name: Sonar Execution
         uses: sonarsource/sonarqube-scan-action@v2
         env:
@@ -39,20 +37,23 @@ jobs:
             -Dsonar.exclusions=**/node_modules/**,**/vendor/**,**/public/packages/**
 
       # Stage 2: Quality Gate
-      - name: Quality Gate
+      - name: Set Quality Gate Failure Msg
+        run: echo "FAILURE_MSG=Quality Gate Failed" >> $GITHUB_ENV
+
+      - name: Check Quality Gate
         id: qg
-        run: echo "FAILURE_MSG=Quality Gate Failed" >> $GITHUB_ENV # Update msg
-        
-      - name: Check QG
         uses: sonarsource/sonarqube-quality-gate-action@v1
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
 
       # Stage 3: Deploy
-      - name: Deploy
+      - name: Set Deploy Failure Msg
+        if: success()
+        run: echo "FAILURE_MSG=Deployment Step" >> $GITHUB_ENV
+
+      - name: Deploy to Server
         if: success()
         run: |
-          echo "FAILURE_MSG=Deployment Step" >> $GITHUB_ENV
           mkdir -p ~/.ssh
           echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
@@ -63,7 +64,7 @@ jobs:
             cd ${PROJECT_DIR}
             git pull origin ${{ github.ref_name }}
 
-            # Next.js case-sensitivity fix
+            # Logic for Next/Vue or Laravel
             if [ "${{ env.PROJECT }}" = "vue" ] || [ "${{ env.PROJECT }}" = "Next" ] || [ "${{ env.PROJECT }}" = "next" ]; then
                 npm install
                 npm run build 
@@ -75,7 +76,7 @@ jobs:
             fi
           EOF
 
-      # Final Notification
+      # Stage 4: Final Notification (Always Runs)
       - name: Post Actions (Slack Notification)
         if: always()
         run: |
@@ -85,4 +86,3 @@ jobs:
             MESSAGE="❌ *${{ env.PROJECT }}* (${{ github.ref_name }}) Failed at: *${{ env.FAILURE_MSG }}* ⚠️"
           fi
           curl -X POST -H 'Content-type: application/json' --data "{\"text\":\"$MESSAGE\"}" ${{ env.SLACK_WEBHOOK }}
-          

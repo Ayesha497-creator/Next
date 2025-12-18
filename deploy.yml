@@ -4,10 +4,11 @@ on:
   push:
     branches:
       - "**"
+
 env:
   REMOTE_USER: "ubuntu"
   REMOTE_HOST: "13.61.68.173"
-  PROJECT: "laravel"
+  PROJECT: "Next"
   SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
 
 jobs:
@@ -19,9 +20,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: SonarQube Analysis
-        id: sonar
-        # FAILURE_MSG pehle set kar rahe hain taake agar ye step fail ho to Slack ko pata ho
+      - name: Set Initial Failure Msg
         run: echo "FAILURE_MSG=SonarQube Analysis" >> $GITHUB_ENV
 
       - name: Run Sonar Scan
@@ -37,17 +36,14 @@ jobs:
             -Dsonar.exclusions=**/node_modules/**,**/vendor/**,**/public/packages/**
 
       - name: Quality Gate
+        id: qg
         uses: sonarsource/sonarqube-quality-gate-action@v1
-        with:
-          scanMetadataReportFile: .scannerwork/report-task.txt
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-        # Is step ke fail hone par message update karein
-        if: always() 
-        run: |
-          if [ "${{ job.status }}" == "failure" ]; then
-            echo "FAILURE_MSG=Quality Gate Failed" >> $GITHUB_ENV
-          fi
+
+      - name: Update Failure Msg if QG Fails
+        if: failure() && steps.qg.outcome == 'failure'
+        run: echo "FAILURE_MSG=Quality Gate Failed" >> $GITHUB_ENV
 
       - name: Deploy
         if: success()

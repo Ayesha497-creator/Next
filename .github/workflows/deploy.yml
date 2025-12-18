@@ -20,7 +20,6 @@ jobs:
         with:
           fetch-depth: 0
 
-      # Stage 1: Sonar Scan
       - name: Set Sonar Failure Msg
         run: echo "FAILURE_MSG=SonarQube Analysis" >> $GITHUB_ENV
 
@@ -36,7 +35,6 @@ jobs:
             -Dsonar.javascript.node.maxspace=4096
             -Dsonar.exclusions=**/node_modules/**,**/vendor/**,**/public/packages/**
 
-      # Stage 2: Quality Gate
       - name: Set Quality Gate Failure Msg
         run: echo "FAILURE_MSG=Quality Gate Failed" >> $GITHUB_ENV
 
@@ -46,7 +44,6 @@ jobs:
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
 
-      # Stage 3: Deploy
       - name: Set Deploy Failure Msg
         if: success()
         run: echo "FAILURE_MSG=Deployment Step" >> $GITHUB_ENV
@@ -64,11 +61,11 @@ jobs:
             cd ${PROJECT_DIR}
             git pull origin ${{ github.ref_name }}
 
-            # Logic for Next/Vue (Sirf Build aur Restart)
-            if [ "${{ env.PROJECT }}" = "vue" ] || [ "${{ env.PROJECT }}" = "Next" ] || [ "${{ env.PROJECT }}" = "next" ]; then
+           
+            if [ "${{ env.PROJECT }}" = "vue" ] || [ "${{ env.PROJECT }}" = "Next" ]; then
                 npm run build 
-                if [ "${{ env.PROJECT }}" = "Next" ] || [ "${{ env.PROJECT }}" = "next" ]; then
-                    # Sirf restart karega, agar process nahi hoga to error nahi dega
+                if [ "${{ env.PROJECT }}" = "Next" ]; then
+                    
                     pm2 restart "Next-${{ github.ref_name }}" --update-env || echo "Process not found, skipping restart."
                 fi
             elif [ "${{ env.PROJECT }}" = "laravel" ]; then
@@ -76,8 +73,8 @@ jobs:
             fi
           EOF
 
-      # Stage 4: Final Notification (Always Runs)
-      - name: Post Actions (Slack Notification)
+    
+      - name: Post Actions 
         if: always()
         run: |
           if [ "${{ job.status }}" == "success" ]; then

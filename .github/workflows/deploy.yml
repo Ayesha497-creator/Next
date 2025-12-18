@@ -2,14 +2,12 @@ name: Multi-Project Deployment
 
 on:
   push:
-    branches:
-      - "**"
+    branches: ["**"]
 
 env:
   REMOTE_USER: "ubuntu"
   REMOTE_HOST: "13.61.68.173"
   PROJECT: "Next"
-  SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
 
 jobs:
   pipeline:
@@ -20,9 +18,7 @@ jobs:
         with:
           fetch-depth: 1
 
-      - name: Set Sonar Failure Msg
-        run: echo "FAILURE_MSG=SonarQube Analysis" >> $GITHUB_ENV
-
+      # Variable ko yahan set karne ki bajaye hum Post Actions mein logic handle karenge
       - name: Sonar Execution
         uses: sonarsource/sonarqube-scan-action@v2
         env:
@@ -35,25 +31,19 @@ jobs:
             -Dsonar.javascript.node.maxspace=4096
             -Dsonar.exclusions=**/node_modules/**,**/vendor/**,**/public/packages/**
 
-      - name: Set Quality Gate Failure Msg
-        run: echo "FAILURE_MSG=Quality Gate Failed" >> $GITHUB_ENV
-
       - name: Check Quality Gate
         id: qg
         uses: sonarsource/sonarqube-quality-gate-action@v1
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
 
-      - name: Set Deploy Failure Msg
-        if: success()
-        run: echo "FAILURE_MSG=Deployment Step" >> $GITHUB_ENV
-
       - name: Deploy to Server
         if: success()
         run: |
+          eval $(ssh-agent -s)
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" | tr -d '\r' | ssh-add -
           mkdir -p ~/.ssh
-          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
-          chmod 600 ~/.ssh/id_rsa
+          chmod 700 ~/.ssh
           
           ssh -o StrictHostKeyChecking=no ${{ env.REMOTE_USER }}@${{ env.REMOTE_HOST }} << 'EOF'
             set -e
@@ -61,32 +51,38 @@ jobs:
             cd ${PROJECT_DIR}
             git pull origin ${{ github.ref_name }}
 
-           
-            if [ "${{ env.PROJECT }}" = "vue" ] || [ "${{ env.PROJECT }}" = "Next" ]; then
+            if [[ "${{ env.PROJECT }}" == "vue" || "${{ env.PROJECT }}" == "Next" ]]; then
                 npm run build 
-                if [ "${{ env.PROJECT }}" = "Next" ]; then
-                    
-                    pm2 restart "Next-${{ github.ref_name }}" --update-env || echo "Process not found, skipping restart."
+                if [[ "${{ env.PROJECT }}" == "Next" ]]; then
+                    pm2 restart "Next-${{ github.ref_name }}" --update-env || echo "Process not found."
                 fi
-            elif [ "${{ env.PROJECT }}" = "laravel" ]; then
+            elif [[ "${{ env.PROJECT }}" == "laravel" ]]; then
                 php artisan optimize
             fi
           EOF
 
-    
-      - name: Post Actions 
+      - name: Post Actions (Slack Notification)
         if: always()
         run: |
-          if [ "${{ job.status }}" == "success" ]; then
+          # Logic to determine where it failed without 3 extra steps
+          if [[ "${{ job.status }}" == "success" ]]; then
             EMOJI="✅"
             TEXT="Deployed Successfully! 🚀"
           else
             EMOJI="❌"
-            TEXT="Failed at: *${{ env.FAILURE_MSG }}* ⚠️"
+            # Automatic failure detection
+            if [[ "${{ steps.qg.outcome }}" == "failure" ]]; then
+               CAUSE="Quality Gate Failed"
+            elif [[ "${{ steps.qg.outcome }}" == "success" ]]; then
+               CAUSE="Deployment Step"
+            else
+               CAUSE="SonarQube Analysis"
+            fi
+            TEXT="Failed at: *${CAUSE}* ⚠️"
           fi
 
           MESSAGE="${EMOJI} *${{ env.PROJECT }}* (${{ github.ref_name }}) ${TEXT}"
-
+          
           curl -X POST -H 'Content-type: application/json' \
           --data "{\"text\":\"${MESSAGE}\"}" \
           "${{ secrets.SLACK_WEBHOOK }}"

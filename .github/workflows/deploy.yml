@@ -16,9 +16,8 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
         with:
-          fetch-depth: 1
+          fetch-depth: 0
 
-      # Variable ko yahan set karne ki bajaye hum Post Actions mein logic handle karenge
       - name: Sonar Execution
         uses: sonarsource/sonarqube-scan-action@v2
         env:
@@ -28,7 +27,6 @@ jobs:
           args: >
             -Dsonar.projectKey=${{ env.PROJECT }}-project
             -Dsonar.sources=.
-            -Dsonar.javascript.node.maxspace=4096
             -Dsonar.exclusions=**/node_modules/**,**/vendor/**,**/public/packages/**
 
       - name: Check Quality Gate
@@ -39,19 +37,18 @@ jobs:
 
       - name: Deploy to Server
         if: success()
-        run: |
-          eval $(ssh-agent -s)
-          echo "${{ secrets.SSH_PRIVATE_KEY }}" | tr -d '\r' | ssh-add -
-          mkdir -p ~/.ssh
-          chmod 700 ~/.ssh
-          
-          ssh -o StrictHostKeyChecking=no ${{ env.REMOTE_USER }}@${{ env.REMOTE_HOST }} << 'EOF'
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ env.REMOTE_HOST }}
+          username: ${{ env.REMOTE_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
             set -e
             PROJECT_DIR="/var/www/html/${{ github.ref_name }}/${{ env.PROJECT }}"
             cd ${PROJECT_DIR}
             git pull origin ${{ github.ref_name }}
 
-            if [[ "${{ env.PROJECT }}" == "vue" || "${{ env.PROJECT }}" == "Next" ]]; then
+            if [[ "${{ env.PROJECT }}" =~ ^(vue|Next)$ ]]; then
                 npm run build 
                 if [[ "${{ env.PROJECT }}" == "Next" ]]; then
                     pm2 restart "Next-${{ github.ref_name }}" --update-env || echo "Process not found."
@@ -59,29 +56,26 @@ jobs:
             elif [[ "${{ env.PROJECT }}" == "laravel" ]]; then
                 php artisan optimize
             fi
-          EOF
 
-      - name: Post Actions (Slack Notification)
+      - name: Post Actions (Notification)
         if: always()
         run: |
-          # Logic to determine where it failed without 3 extra steps
+          STATUS="${{ job.status == 'success' && 'SUCCESS' || 'FAILED' }}"
+          
           if [[ "${{ job.status }}" == "success" ]]; then
-            EMOJI="✅"
-            TEXT="Deployed Successfully! 🚀"
+              TEXT="Deployment completed successfully."
           else
-            EMOJI="❌"
-            # Automatic failure detection
-            if [[ "${{ steps.qg.outcome }}" == "failure" ]]; then
-               CAUSE="Quality Gate Failed"
-            elif [[ "${{ steps.qg.outcome }}" == "success" ]]; then
-               CAUSE="Deployment Step"
-            else
-               CAUSE="SonarQube Analysis"
-            fi
-            TEXT="Failed at: *${CAUSE}* ⚠️"
+              if [[ "${{ steps.qg.outcome }}" == "failure" ]]; then
+                  CAUSE="Quality Gate"
+              elif [[ "${{ steps.qg.outcome }}" == "success" ]]; then
+                  CAUSE="Deployment"
+              else
+                  CAUSE="Sonar Analysis"
+              fi
+              TEXT="Failed at: ${CAUSE} step."
           fi
 
-          MESSAGE="${EMOJI} *${{ env.PROJECT }}* (${{ github.ref_name }}) ${TEXT}"
+          MESSAGE="[${STATUS}] Project: ${{ env.PROJECT }} | Branch: ${{ github.ref_name }} | ${TEXT}"
           
           curl -X POST -H 'Content-type: application/json' \
           --data "{\"text\":\"${MESSAGE}\"}" \

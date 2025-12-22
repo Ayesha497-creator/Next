@@ -6,6 +6,7 @@ on:
 
 env:
   PROJECT: "Next"
+  TEST_BRANCH: "test" # Aapka requirement: Branch name 'test'
   SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
   SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
 
@@ -17,7 +18,9 @@ jobs:
         with:
           fetch-depth: 0
 
+      # 1. SCAN SIRF TEST BRANCH PAR HOGA
       - name: Sonar Analysis
+        if: github.ref_name == env.TEST_BRANCH
         uses: sonarsource/sonarqube-scan-action@v2
         with:
           args: >
@@ -25,12 +28,24 @@ jobs:
             -Dsonar.sources=.
             -Dsonar.exclusions=**/node_modules/**,**/vendor/**,**/public/packages/**
 
-      - name: Quality Gate
-        id: qg
-        uses: sonarsource/sonarqube-quality-gate-action@v1
+      # 2. STATUS CHECK (Hamesha 'test' branch ka result mangwayega)
+      - name: Get Test Branch Status
+        id: sonar_status
+        shell: bash
+        run: |
+          # Agar current branch 'test' hai, to 20 sec wait karein taake scan finish ho jaye
+          if [[ "${{ github.ref_name }}" == "${{ env.TEST_BRANCH }}" ]]; then sleep 20; fi
+          
+          # API call: Hamesha TEST_BRANCH ka status check hoga
+          STATUS=$(curl -s -u "${{ secrets.SONAR_TOKEN }}:" "${{ secrets.SONAR_HOST_URL }}/api/qualitygates/project_status?projectKey=${{ env.PROJECT }}-project" | jq -r '.projectStatus.status')
+          
+          echo "Test Branch Status: $STATUS"
+          echo "gate_status=$STATUS" >> $GITHUB_OUTPUT
 
+      # 3. SECURE DEPLOYMENT (Based on 'test' result)
       - name: Deploy
-        if: success()
+        # Deploy sirf tab hoga jab sonar_status 'OK' ho
+        if: steps.sonar_status.outputs.gate_status == 'OK'
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.REMOTE_HOST }}
@@ -39,37 +54,33 @@ jobs:
           script: |
             set -e
             cd /var/www/html/${{ github.ref_name }}/${{ env.PROJECT }}
-            git pull origin ${{ github.ref_name }}
+            
+            git fetch origin ${{ github.ref_name }}
+            git reset --hard origin/${{ github.ref_name }}
 
             case "${{ env.PROJECT }}" in
               "Next"|"vue")
                 npm run build
-                if [[ "${{ env.PROJECT }}" == "Next" ]]; then
-                    pm2 restart "Next-${{ github.ref_name }}" --update-env || echo "New process"
-                    pm2 save
-                fi
+                pm2 restart "${{ env.PROJECT }}-${{ github.ref_name }}" --update-env || pm2 start npm --name "${{ env.PROJECT }}-${{ github.ref_name }}" -- start
+                pm2 save
                 ;;
               "laravel")
                 php artisan optimize
                 ;;
             esac
 
+      # 4. SLACK NOTIFICATION
       - name: Notify
         if: always()
         run: |
-          # Variable set karein
-          STATUS="${{ job.status == 'success' && 'SUCCESS ✅' || 'FAILED ❌' }}"
+          GATE="${{ steps.sonar_status.outputs.gate_status }}"
+          JOB="${{ job.status == 'success' && 'SUCCESS ✅' || 'FAILED ❌' }}"
           
-          if [[ "${{ job.status }}" == "success" ]]; then
-            MSG="Deployment successful!"
+          if [[ "$GATE" != "OK" ]]; then
+            MSG="DEPLOYMENT BLOCKED 🛑: Quality Gate failed on '${{ env.TEST_BRANCH }}'."
           else
-            [[ "${{ steps.qg.outcome }}" == "failure" ]] && ERR="Quality Gate" || ERR="Build/Deploy"
-            MSG="Failed at: $ERR step"
+            MSG="Deployment successful on branch: ${{ github.ref_name }}"
           fi
 
-          # Slack payload build karein (is tarah formatting error nahi aata)
-          PAYLOAD="{\"text\": \"*[$STATUS]*\n*Project:* ${{ env.PROJECT }}\n*Branch:* ${{ github.ref_name }}\n*Status:* $MSG\"}"
-
-          curl -X POST -H 'Content-type: application/json' \
-          --data "$PAYLOAD" \
-          "${{ secrets.SLACK_WEBHOOK }}"
+          PAYLOAD="{\"text\": \"*[$JOB]*\n*Project:* ${{ env.PROJECT }}\n*Current Branch:* ${{ github.ref_name }}\n*Sonar (Test Branch):* $GATE\n*Note:* $MSG\"}"
+          curl -X POST -H 'Content-type: application/json' --data "$PAYLOAD" "${{ secrets.SLACK_WEBHOOK }}"

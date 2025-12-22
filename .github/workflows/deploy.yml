@@ -45,9 +45,9 @@ jobs:
         if: steps.sonar.outputs.check-status == 'OK'
         uses: appleboy/ssh-action@v1.0.3
         with:
-          host: ${{ secrets.REMOTE_HOST }}
-          username: ${{ secrets.REMOTE_USER }}
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
+        host: ${{ vars.REMOTE_HOST }}       
+        username: ${{ vars.REMOTE_USER }}
+       key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
             set -e
             cd /var/www/html/${{ github.ref_name }}/${{ env.PROJECT }}

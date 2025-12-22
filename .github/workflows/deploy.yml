@@ -36,7 +36,8 @@ jobs:
         id: sonar_status
         shell: bash
         run: |
-          sleep 20 # Scan process hone ka wait
+          echo "Waiting 60 seconds for SonarQube to finish processing..."
+          sleep 60
           STATUS=$(curl -s -u "${{ secrets.SONAR_TOKEN }}:" "${{ secrets.SONAR_HOST_URL }}/api/qualitygates/project_status?projectKey=${{ env.PROJECT }}-project" | jq -r '.projectStatus.status')
           echo "gate_status=$STATUS" >> $GITHUB_OUTPUT
           echo "Quality Gate Status: $STATUS"

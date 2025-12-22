@@ -20,6 +20,7 @@ jobs:
         with:
           ref: ${{ env.TEST_BRANCH }}
           fetch-depth: 0
+          clean: false
 
       # 2. SCAN: Ye step har branch ke push par TEST branch ko scan karega
       - name: Sonar Analysis (On Test Branch)

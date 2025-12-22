@@ -69,18 +69,20 @@ jobs:
                 ;;
             esac
 
-      # 4. SLACK NOTIFICATION
+   
+# 5. NOTIFY SLACK
       - name: Notify
         if: always()
         run: |
-          GATE="${{ steps.sonar_status.outputs.gate_status }}"
-          JOB="${{ job.status == 'success' && 'SUCCESS ✅' || 'FAILED ❌' }}"
+          GATE_STATUS="${{ steps.sonar_status.outputs.gate_status }}"
+          JOB_STATUS="${{ job.status == 'success' && 'SUCCESS ✅' || 'FAILED ❌' }}"
           
-          if [[ "$GATE" != "OK" ]]; then
-            MSG="DEPLOYMENT BLOCKED 🛑: Quality Gate failed on '${{ env.TEST_BRANCH }}'."
+          if [[ "$GATE_STATUS" != "OK" ]]; then
+            # Aapki pasand ka message yahan set kiya hai
+            MSG="Deployment FAILED ❌ because Test branch Quality Gate NOT PASSED. Please fix 'test' branch issues first."
           else
-            MSG="Deployment successful on branch: ${{ github.ref_name }}"
+            MSG="Deployment on ${{ github.ref_name }} finished with status: $JOB_STATUS"
           fi
 
-          PAYLOAD="{\"text\": \"*[$JOB]*\n*Project:* ${{ env.PROJECT }}\n*Current Branch:* ${{ github.ref_name }}\n*Sonar (Test Branch):* $GATE\n*Note:* $MSG\"}"
+          PAYLOAD="{\"text\": \"*[$JOB_STATUS]*\n*Project:* ${{ env.PROJECT }}\n*Branch:* ${{ github.ref_name }}\n*Sonar Status:* $GATE_STATUS\n*Result:* $MSG\"}"
           curl -X POST -H 'Content-type: application/json' --data "$PAYLOAD" "${{ secrets.SLACK_WEBHOOK }}"

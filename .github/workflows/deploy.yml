@@ -5,11 +5,11 @@ on:
     branches: ["**"]
 
 env:
-  PROJECT: "Next"
-  PROJECT_KEY: "Next-project"
+  # Sirf framework ka naam yahan badlein, baqi sab khud ho jayega
+  PROJECT: "Next"              
   TEST_BRANCH: "test" 
   SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-  SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+  SONAR_HOST_URL: "http://13.51.68.155:9000"
 
 jobs:
   pipeline:
@@ -22,23 +22,23 @@ jobs:
           ref: ${{ env.TEST_BRANCH }}
           fetch-depth: 0
 
-      # 2. SCAN: Hamesha test branch hi scan hogi
+      # 2. SCAN: Project Key ab dynamic hai (PROJECT-project)
       - name: Sonar Analysis
         uses: sonarsource/sonarqube-scan-action@v2
         with:
           args: >
-            -Dsonar.projectKey=${{ env.PROJECT_KEY }}
+            -Dsonar.projectKey=${{ env.PROJECT }}-project
             -Dsonar.sources=.
-            -Dsonar.exclusions=**/node_modules/**,**/vendor/**,**/public/packages/**
+            -Dsonar.exclusions=**/node_modules/**,**/vendor/**
 
-      # 3. OPTIMIZED QUALITY GATE: Ye khud wait karega aur status check karega
+      # 3. QUALITY GATE: Webhook ka wait karega
       - name: SonarQube Quality Gate Check
         id: sonarqube-quality-gate-check
         uses: sonarsource/sonarqube-quality-gate-action@v1
         timeout-minutes: 5
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+          SONAR_HOST_URL: ${{ env.SONAR_HOST_URL }}
 
       # 4. SWITCH: Wapis current branch par deploy ke liye
       - name: Checkout Current Branch
@@ -48,7 +48,6 @@ jobs:
           ref: ${{ github.ref_name }}
           clean: false
 
-      # 5. DEPLOY: Agar status 'OK' hai tabhi chalega
       - name: Deploy
         if: steps.sonarqube-quality-gate-check.outputs.check-status == 'OK'
         uses: appleboy/ssh-action@v1.0.3
@@ -65,7 +64,8 @@ jobs:
             case "${{ env.PROJECT }}" in
               "Next"|"vue")
                 npm run build
-                pm2 reload "${{ env.PROJECT }}-${{ github.ref_name }}" || pm2 restart "${{ env.PROJECT }}-${{ github.ref_name }}"
+                # Restart logic: Pehle reload try karega, agar process nahi mili to restart
+               pm2 restart "${{ env.PROJECT }}-${{ github.ref_name }}"
                 pm2 save
                 ;;
               "laravel")
@@ -73,12 +73,10 @@ jobs:
                 ;;
             esac
 
-      # 6. NOTIFY
+      # 6. DYNAMIC NOTIFICATION
       - name: Notify
         if: always()
         run: |
           STATUS="${{ steps.sonarqube-quality-gate-check.outputs.check-status }}"
-          MSG="Status: $STATUS. Deployment for ${{ github.ref_name }} is complete."
-          
-          PAYLOAD="{\"text\": \"*Branch:* ${{ github.ref_name }}\n*Sonar Status:* $STATUS\n*Note:* $MSG\"}"
+          PAYLOAD="{\"text\": \"*Project:* ${{ env.PROJECT }}\n*Branch:* ${{ github.ref_name }}\n*Sonar Status:* $STATUS\"}"
           curl -X POST -H 'Content-type: application/json' --data "$PAYLOAD" "${{ secrets.SLACK_WEBHOOK }}"

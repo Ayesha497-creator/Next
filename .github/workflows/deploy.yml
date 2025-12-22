@@ -14,12 +14,13 @@ jobs:
   pipeline:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout Test Branch
+      - name: Checkout Test
         uses: actions/checkout@v4
         with:
           ref: ${{ env.TEST_BRANCH }}
           fetch-depth: 0
-      - name: Sonar Analysis
+
+      - name: Sonar Scan
         uses: sonarsource/sonarqube-scan-action@v2
         with:
           args: >
@@ -27,23 +28,20 @@ jobs:
             -Dsonar.sources=.
             -Dsonar.exclusions=**/node_modules/**,**/vendor/**
 
-      - name: SonarQube Quality Gate Check
-        id: sonarqube-quality-gate-check
+      - name: Quality Gate
+        id: sonar
         uses: sonarsource/sonarqube-quality-gate-action@v1
         timeout-minutes: 5
-        env:
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-          SONAR_HOST_URL: ${{ env.SONAR_HOST_URL }}
 
-      - name: Checkout Current Branch
-        if: steps.sonarqube-quality-gate-check.outputs.check-status == 'OK'
+      - name: Checkout Current
+        if: steps.sonar.outputs.check-status == 'OK'
         uses: actions/checkout@v4
         with:
           ref: ${{ github.ref_name }}
           clean: false
 
       - name: Deploy
-        if: steps.sonarqube-quality-gate-check.outputs.check-status == 'OK'
+        if: steps.sonar.outputs.check-status == 'OK'
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.REMOTE_HOST }}
@@ -58,8 +56,7 @@ jobs:
             case "${{ env.PROJECT }}" in
               "Next"|"vue")
                 npm run build
-                # Restart logic: Pehle reload try karega, agar process nahi mili to restart
-               pm2 restart "${{ env.PROJECT }}-${{ github.ref_name }}"
+                pm2 restart "${{ env.PROJECT }}-${{ github.ref_name }}"
                 pm2 save
                 ;;
               "laravel")
@@ -70,12 +67,11 @@ jobs:
       - name: Notify
         if: always()
         run: |
-          # Check if the gate status is empty or failed
-          GATE_STATUS="${{ steps.sonarqube-quality-gate-check.outputs.check-status }}"
+          GATE_STATUS="${{ steps.sonar.outputs.check-status }}"
           
           if [[ -z "$GATE_STATUS" || "$GATE_STATUS" != "OK" ]]; then
             FINAL_STATUS="FAILED ❌"
-            MSG="Deployment Blocked: Code Quality not up to mark."
+            MSG="Deployment Blocked: Code Quality failed."
           else
             FINAL_STATUS="PASSED ✅"
             MSG="Deployment Successful!"

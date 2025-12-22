@@ -6,7 +6,7 @@ on:
 
 env:
   PROJECT: "Next"
-  TEST_BRANCH: "test" # Aapka requirement: Branch name 'test'
+  TEST_BRANCH: "test" 
   SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
   SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
 
@@ -18,7 +18,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      # 1. SCAN SIRF TEST BRANCH PAR HOGA
+      # 1. SCAN: Sirf test branch par code scan hoga
       - name: Sonar Analysis
         if: github.ref_name == env.TEST_BRANCH
         uses: sonarsource/sonarqube-scan-action@v2
@@ -28,23 +28,19 @@ jobs:
             -Dsonar.sources=.
             -Dsonar.exclusions=**/node_modules/**,**/vendor/**,**/public/packages/**
 
-      # 2. STATUS CHECK (Hamesha 'test' branch ka result mangwayega)
+      # 2. STATUS CHECK: Hamesha test branch ka hi result dashboard se uthayega
       - name: Get Test Branch Status
         id: sonar_status
         shell: bash
         run: |
-          # Agar current branch 'test' hai, to 20 sec wait karein taake scan finish ho jaye
           if [[ "${{ github.ref_name }}" == "${{ env.TEST_BRANCH }}" ]]; then sleep 20; fi
           
-          # API call: Hamesha TEST_BRANCH ka status check hoga
-          STATUS=$(curl -s -u "${{ secrets.SONAR_TOKEN }}:" "${{ secrets.SONAR_HOST_URL }}/api/qualitygates/project_status?projectKey=${{ env.PROJECT }}-project" | jq -r '.projectStatus.status')
+          STATUS=$(curl -s -u "${{ secrets.SONAR_TOKEN :" "${{ secrets.SONAR_HOST_URL }}/api/qualitygates/project_status?projectKey=${{ env.PROJECT }}-project" | jq -r '.projectStatus.status')
           
-          echo "Test Branch Status: $STATUS"
           echo "gate_status=$STATUS" >> $GITHUB_OUTPUT
 
-      # 3. SECURE DEPLOYMENT (Based on 'test' result)
+      # 3. DEPLOY: Agar test branch ka status 'OK' hai tabhi chalega
       - name: Deploy
-        # Deploy sirf tab hoga jab sonar_status 'OK' ho
         if: steps.sonar_status.outputs.gate_status == 'OK'
         uses: appleboy/ssh-action@v1.0.3
         with:
@@ -54,7 +50,6 @@ jobs:
           script: |
             set -e
             cd /var/www/html/${{ github.ref_name }}/${{ env.PROJECT }}
-            
             git fetch origin ${{ github.ref_name }}
             git reset --hard origin/${{ github.ref_name }}
 
@@ -69,20 +64,16 @@ jobs:
                 ;;
             esac
 
-   
-# 5. NOTIFY SLACK
+      # 4. SLACK NOTIFICATION
       - name: Notify
         if: always()
         run: |
-          GATE_STATUS="${{ steps.sonar_status.outputs.gate_status }}"
-          JOB_STATUS="${{ job.status == 'success' && 'SUCCESS ✅' || 'FAILED ❌' }}"
-          
-          if [[ "$GATE_STATUS" != "OK" ]]; then
-            # Aapki pasand ka message yahan set kiya hai
-            MSG="Deployment FAILED ❌ because Test branch Quality Gate NOT PASSED. Please fix 'test' branch issues first."
+          GATE="${{ steps.sonar_status.outputs.gate_status }}"
+          if [[ "$GATE" != "OK" ]]; then
+            MSG="Deployment FAILED ❌ because Test branch Quality Gate NOT PASSED."
           else
-            MSG="Deployment on ${{ github.ref_name }} finished with status: $JOB_STATUS"
+            MSG="Deployment on ${{ github.ref_name }} SUCCESSFUL ✅"
           fi
 
-          PAYLOAD="{\"text\": \"*[$JOB_STATUS]*\n*Project:* ${{ env.PROJECT }}\n*Branch:* ${{ github.ref_name }}\n*Sonar Status:* $GATE_STATUS\n*Result:* $MSG\"}"
+          PAYLOAD="{\"text\": \"*Project:* ${{ env.PROJECT }}\n*Branch:* ${{ github.ref_name }}\n*Sonar Status:* $GATE\n*Note:* $MSG\"}"
           curl -X POST -H 'Content-type: application/json' --data "$PAYLOAD" "${{ secrets.SLACK_WEBHOOK }}"

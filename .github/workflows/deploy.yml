@@ -5,7 +5,6 @@ on:
     branches: ["**"]
 
 env:
-  # Sirf framework ka naam yahan badlein, baqi sab khud ho jayega
   PROJECT: "Next"              
   TEST_BRANCH: "test" 
   SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
@@ -15,14 +14,11 @@ jobs:
   pipeline:
     runs-on: ubuntu-latest
     steps:
-      # 1. Checkout TEST branch for scanning
       - name: Checkout Test Branch
         uses: actions/checkout@v4
         with:
           ref: ${{ env.TEST_BRANCH }}
           fetch-depth: 0
-
-      # 2. SCAN: Project Key ab dynamic hai (PROJECT-project)
       - name: Sonar Analysis
         uses: sonarsource/sonarqube-scan-action@v2
         with:
@@ -31,7 +27,6 @@ jobs:
             -Dsonar.sources=.
             -Dsonar.exclusions=**/node_modules/**,**/vendor/**
 
-      # 3. QUALITY GATE: Webhook ka wait karega
       - name: SonarQube Quality Gate Check
         id: sonarqube-quality-gate-check
         uses: sonarsource/sonarqube-quality-gate-action@v1
@@ -40,7 +35,6 @@ jobs:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           SONAR_HOST_URL: ${{ env.SONAR_HOST_URL }}
 
-      # 4. SWITCH: Wapis current branch par deploy ke liye
       - name: Checkout Current Branch
         if: steps.sonarqube-quality-gate-check.outputs.check-status == 'OK'
         uses: actions/checkout@v4
@@ -73,7 +67,6 @@ jobs:
                 ;;
             esac
 
-      # 6. SMART NOTIFICATION (Fix for FAILED status)
       - name: Notify
         if: always()
         run: |

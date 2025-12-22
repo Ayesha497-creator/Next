@@ -6,6 +6,7 @@ on:
 
 env:
   PROJECT: "Next"
+  PROJECT_KEY: "Next-project"
   TEST_BRANCH: "test" 
   SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
   SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
@@ -14,44 +15,42 @@ jobs:
   pipeline:
     runs-on: ubuntu-latest
     steps:
-      # 1. Hamesha 'test' branch ka code checkout karein scan ke liye
-      - name: Checkout Test Branch for Scanning
+      # 1. Checkout TEST branch for scanning
+      - name: Checkout Test Branch
         uses: actions/checkout@v4
         with:
           ref: ${{ env.TEST_BRANCH }}
           fetch-depth: 0
-          clean: false
 
-      # 2. SCAN: Ye step har branch ke push par TEST branch ko scan karega
-      - name: Sonar Analysis (On Test Branch)
+      # 2. SCAN: Hamesha test branch hi scan hogi
+      - name: Sonar Analysis
         uses: sonarsource/sonarqube-scan-action@v2
         with:
           args: >
-            -Dsonar.projectKey=${{ env.PROJECT }}-project
+            -Dsonar.projectKey=${{ env.PROJECT_KEY }}
             -Dsonar.sources=.
             -Dsonar.exclusions=**/node_modules/**,**/vendor/**,**/public/packages/**
 
-      # 3. STATUS: Test branch ka result Dashboard se check karein
-      - name: Get Test Branch Status
-        id: sonar_status
-        shell: bash
-        run: |
-          echo "Waiting 60 seconds for SonarQube to finish processing..."
-          sleep 60
-          STATUS=$(curl -s -u "${{ secrets.SONAR_TOKEN }}:" "${{ secrets.SONAR_HOST_URL }}/api/qualitygates/project_status?projectKey=${{ env.PROJECT }}-project" | jq -r '.projectStatus.status')
-          echo "gate_status=$STATUS" >> $GITHUB_OUTPUT
-          echo "Quality Gate Status: $STATUS"
+      # 3. OPTIMIZED QUALITY GATE: Ye khud wait karega aur status check karega
+      - name: SonarQube Quality Gate Check
+        id: sonarqube-quality-gate-check
+        uses: sonarsource/sonarqube-quality-gate-action@v1
+        timeout-minutes: 5
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
 
-      # 4. SWITCH: Ab wapis current branch (jispe push hua) usko checkout karein deploy ke liye
-      - name: Checkout Current Branch for Deploy
-        if: steps.sonar_status.outputs.gate_status == 'OK'
+      # 4. SWITCH: Wapis current branch par deploy ke liye
+      - name: Checkout Current Branch
+        if: steps.sonarqube-quality-gate-check.outputs.check-status == 'OK'
         uses: actions/checkout@v4
         with:
           ref: ${{ github.ref_name }}
+          clean: false
 
-      # 5. DEPLOY: Agar test branch OK hai to current branch deploy karein
+      # 5. DEPLOY: Agar status 'OK' hai tabhi chalega
       - name: Deploy
-        if: steps.sonar_status.outputs.gate_status == 'OK'
+        if: steps.sonarqube-quality-gate-check.outputs.check-status == 'OK'
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.REMOTE_HOST }}
@@ -65,9 +64,8 @@ jobs:
 
             case "${{ env.PROJECT }}" in
               "Next"|"vue")
-            
                 npm run build
-                pm2 restart "${{ env.PROJECT }}-${{ github.ref_name }}" --update-env || pm2 start npm --name "${{ env.PROJECT }}-${{ github.ref_name }}" -- start
+                pm2 reload "${{ env.PROJECT }}-${{ github.ref_name }}" || pm2 restart "${{ env.PROJECT }}-${{ github.ref_name }}"
                 pm2 save
                 ;;
               "laravel")
@@ -75,16 +73,12 @@ jobs:
                 ;;
             esac
 
-      # 6. SLACK NOTIFICATION
+      # 6. NOTIFY
       - name: Notify
         if: always()
         run: |
-          GATE="${{ steps.sonar_status.outputs.gate_status }}"
-          if [[ "$GATE" != "OK" ]]; then
-            MSG="Deployment FAILED ❌ because Test branch Quality Gate NOT PASSED."
-          else
-            MSG="Deployment on ${{ github.ref_name }} SUCCESSFUL ✅"
-          fi
-
-          PAYLOAD="{\"text\": \"*Project:* ${{ env.PROJECT }}\n*Current Branch:* ${{ github.ref_name }}\n*Scan Result (Test):* $GATE\n*Note:* $MSG\"}"
+          STATUS="${{ steps.sonarqube-quality-gate-check.outputs.check-status }}"
+          MSG="Status: $STATUS. Deployment for ${{ github.ref_name }} is complete."
+          
+          PAYLOAD="{\"text\": \"*Branch:* ${{ github.ref_name }}\n*Sonar Status:* $STATUS\n*Note:* $MSG\"}"
           curl -X POST -H 'Content-type: application/json' --data "$PAYLOAD" "${{ secrets.SLACK_WEBHOOK }}"

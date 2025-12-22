@@ -14,13 +14,15 @@ jobs:
   pipeline:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      # 1. Hamesha 'test' branch ka code checkout karein scan ke liye
+      - name: Checkout Test Branch for Scanning
+        uses: actions/checkout@v4
         with:
+          ref: ${{ env.TEST_BRANCH }}
           fetch-depth: 0
 
-      # 1. SCAN: Sirf test branch par code scan hoga
-      - name: Sonar Analysis
-        if: github.ref_name == env.TEST_BRANCH
+      # 2. SCAN: Ye step har branch ke push par TEST branch ko scan karega
+      - name: Sonar Analysis (On Test Branch)
         uses: sonarsource/sonarqube-scan-action@v2
         with:
           args: >
@@ -28,18 +30,24 @@ jobs:
             -Dsonar.sources=.
             -Dsonar.exclusions=**/node_modules/**,**/vendor/**,**/public/packages/**
 
-      # 2. STATUS CHECK: Hamesha test branch ka hi result dashboard se uthayega
+      # 3. STATUS: Test branch ka result Dashboard se check karein
       - name: Get Test Branch Status
         id: sonar_status
         shell: bash
         run: |
-          if [[ "${{ github.ref_name }}" == "${{ env.TEST_BRANCH }}" ]]; then sleep 20; fi
-          
-          STATUS=$(curl -s -u "${{ secrets.SONAR_TOKEN :" "${{ secrets.SONAR_HOST_URL }}/api/qualitygates/project_status?projectKey=${{ env.PROJECT }}-project" | jq -r '.projectStatus.status')
-          
+          sleep 20 # Scan process hone ka wait
+          STATUS=$(curl -s -u "${{ secrets.SONAR_TOKEN }}:" "${{ secrets.SONAR_HOST_URL }}/api/qualitygates/project_status?projectKey=${{ env.PROJECT }}-project" | jq -r '.projectStatus.status')
           echo "gate_status=$STATUS" >> $GITHUB_OUTPUT
+          echo "Quality Gate Status: $STATUS"
 
-      # 3. DEPLOY: Agar test branch ka status 'OK' hai tabhi chalega
+      # 4. SWITCH: Ab wapis current branch (jispe push hua) usko checkout karein deploy ke liye
+      - name: Checkout Current Branch for Deploy
+        if: steps.sonar_status.outputs.gate_status == 'OK'
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+
+      # 5. DEPLOY: Agar test branch OK hai to current branch deploy karein
       - name: Deploy
         if: steps.sonar_status.outputs.gate_status == 'OK'
         uses: appleboy/ssh-action@v1.0.3
@@ -55,6 +63,7 @@ jobs:
 
             case "${{ env.PROJECT }}" in
               "Next"|"vue")
+            
                 npm run build
                 pm2 restart "${{ env.PROJECT }}-${{ github.ref_name }}" --update-env || pm2 start npm --name "${{ env.PROJECT }}-${{ github.ref_name }}" -- start
                 pm2 save
@@ -64,7 +73,7 @@ jobs:
                 ;;
             esac
 
-      # 4. SLACK NOTIFICATION
+      # 6. SLACK NOTIFICATION
       - name: Notify
         if: always()
         run: |
@@ -75,5 +84,5 @@ jobs:
             MSG="Deployment on ${{ github.ref_name }} SUCCESSFUL ✅"
           fi
 
-          PAYLOAD="{\"text\": \"*Project:* ${{ env.PROJECT }}\n*Branch:* ${{ github.ref_name }}\n*Sonar Status:* $GATE\n*Note:* $MSG\"}"
+          PAYLOAD="{\"text\": \"*Project:* ${{ env.PROJECT }}\n*Current Branch:* ${{ github.ref_name }}\n*Scan Result (Test):* $GATE\n*Note:* $MSG\"}"
           curl -X POST -H 'Content-type: application/json' --data "$PAYLOAD" "${{ secrets.SLACK_WEBHOOK }}"

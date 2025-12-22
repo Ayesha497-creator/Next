@@ -19,6 +19,9 @@ jobs:
         with:
           ref: ${{ env.TEST_BRANCH }}
           fetch-depth: 0
+          clean: true
+      - name: Verify Branch
+        run: git log -1 --format=%H
       - name: Sonar Scan
         uses: sonarsource/sonarqube-scan-action@v2
         with:

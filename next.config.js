@@ -1,8 +1,5 @@
-/** @type {import('next').NextConfig} */
 const nextConfig = {
-  eslint: {
-    ignoreDuringBuilds: true,
-  },
+  basePath: '/stage/next',
+  // baki settings...
 }
-
 module.exports = nextConfig

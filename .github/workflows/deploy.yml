@@ -9,7 +9,7 @@ env:
   PROJECT: "Next"              
   TEST_BRANCH: "test" 
   SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-  SONAR_HOST_URL: "http://13.51.68.155:9000"
+  SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
 
 jobs:
   pipeline:
@@ -73,10 +73,20 @@ jobs:
                 ;;
             esac
 
-      # 6. DYNAMIC NOTIFICATION
+      # 6. SMART NOTIFICATION (Fix for FAILED status)
       - name: Notify
         if: always()
         run: |
-          STATUS="${{ steps.sonarqube-quality-gate-check.outputs.check-status }}"
-          PAYLOAD="{\"text\": \"*Project:* ${{ env.PROJECT }}\n*Branch:* ${{ github.ref_name }}\n*Sonar Status:* $STATUS\"}"
+          # Check if the gate status is empty or failed
+          GATE_STATUS="${{ steps.sonarqube-quality-gate-check.outputs.check-status }}"
+          
+          if [[ -z "$GATE_STATUS" || "$GATE_STATUS" != "OK" ]]; then
+            FINAL_STATUS="FAILED ❌"
+            MSG="Deployment Blocked: Code Quality not up to mark."
+          else
+            FINAL_STATUS="PASSED ✅"
+            MSG="Deployment Successful!"
+          fi
+
+          PAYLOAD="{\"text\": \"*Project:* ${{ env.PROJECT }}\n*Branch:* ${{ github.ref_name }}\n*Sonar Status:* $FINAL_STATUS\n*Detail:* $MSG\"}"
           curl -X POST -H 'Content-type: application/json' --data "$PAYLOAD" "${{ secrets.SLACK_WEBHOOK }}"

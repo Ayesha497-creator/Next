@@ -2,10 +2,10 @@ name: Multi-Project Deployment
 
 on:
   push:
-    branches: ["test", "development", "stage"]
+    branches: ['test', 'development', 'stage']
 
 env:
-  PROJECT: "Next"
+  PROJECT: 'Next'
   SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
   SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
 
@@ -36,7 +36,7 @@ jobs:
         timeout-minutes: 5
 
   deploy:
-    # Logic: 
+    # Logic:
     # 1. Agar 'test' branch hai, to quality_gate success hona chahiye.
     # 2. Agar dev ya stage branch hai, to bina quality_gate ke chale.
     needs: quality_gate

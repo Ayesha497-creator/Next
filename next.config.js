@@ -1,5 +1,5 @@
 const nextConfig = {
-  basePath: '/development/next',
+  basePath: '/development/next'
   // baki settings...
 }
 module.exports = nextConfig

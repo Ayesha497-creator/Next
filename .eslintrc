@@ -11,6 +11,7 @@
       {
         "singleQuote": true,
         "endOfLine": "auto"
+        "semi": true // <--- Add this
       }
     ]
   },

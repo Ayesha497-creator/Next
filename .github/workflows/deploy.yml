@@ -69,15 +69,23 @@ jobs:
     steps:
       - name: Send Slack Notification
         run: |
-          # Use needs context to determine overall success
-          if [[ "${{ needs.deploy.result }}" == "success" ]]; then
-            STATUS="PASSED ✅"
-            MSG="Deployment Successful!"
-          else
-            STATUS="FAILED ❌"
-            MSG="Deployment Blocked or Failed. Check Sonar/Logs."
-          fi
+          if [[ "${{ needs.quality_gate.result }}" != "success" ]]; then
+            STATUS="QUALITY FAILED ❌"
+            MSG="Deployment Blocked: SonarQube Quality Gate failed on branch ${{ env.TEST_BRANCH }}."
           
+          elif [[ "${{ needs.deploy.result }}" == "skipped" ]]; then
+            STATUS="SKIPPED ⚠️"
+            MSG="Quality Gate was OK, but Deployment was skipped (Check conditions)."
+          
+          elif [[ "${{ needs.deploy.result }}" != "success" ]]; then
+            STATUS="DEPLOY FAILED ❌"
+            MSG="Quality Gate passed, but SSH deployment failed on server."
+          
+          else
+            STATUS="SUCCESS ✅"
+            MSG="Project deployed successfully to server!"
+          fi
+
           curl -X POST -H 'Content-type: application/json' \
           --data "{\"text\": \"*Project:* ${{ env.PROJECT }}\n*Branch:* ${{ github.ref_name }}\n*Status:* $STATUS\n*Detail:* $MSG\"}" \
           "${{ secrets.SLACK_WEBHOOK }}"

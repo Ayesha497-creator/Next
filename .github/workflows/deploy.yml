@@ -1,0 +1,90 @@
+name: Multi-Project Deployment
+
+on:
+  push:
+    branches: ['test', 'development', 'stage']
+
+env:
+  PROJECT: 'Next'
+  SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+  SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+
+jobs:
+  quality_gate:
+    if: github.ref_name == 'test'
+    runs-on: ubuntu-latest
+    outputs:
+      sonar_status: ${{ steps.sonar.outputs.check-status }}
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Sonar Scan
+        uses: sonarsource/sonarqube-scan-action@v2
+        with:
+          args: >
+            -Dsonar.projectKey=${{ env.PROJECT }}-project
+            -Dsonar.sources=.
+            -Dsonar.exclusions=**/node_modules/**,**/vendor/**
+
+      - name: Quality Gate
+        id: sonar
+        uses: sonarsource/sonarqube-quality-gate-action@v1
+        timeout-minutes: 5
+
+  deploy:
+   
+    needs: quality_gate
+    if: |
+      always() && 
+      (
+        (github.ref_name == 'test' && needs.quality_gate.result == 'success') ||
+        (github.ref_name == 'development' || github.ref_name == 'stage')
+      )
+    runs-on: ubuntu-latest
+    steps:
+      - name: Remote SSH Deployment
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ vars.REMOTE_HOST }}
+          username: ${{ vars.REMOTE_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            set -e
+            APP_PATH="/var/www/html/${{ github.ref_name }}/${{ env.PROJECT }}"
+            cd $APP_PATH
+            git pull origin ${{ github.ref_name }}
+
+            case "${{ env.PROJECT }}" in
+              "Next"|"vue")
+                npm run build
+                [[ "${{ env.PROJECT }}" == "Next" ]] && pm2 restart "${{ env.PROJECT }}-${{ github.ref_name }}" && pm2 save
+                ;;
+              "laravel")
+                php artisan optimize
+                ;;
+            esac
+
+  notify:
+    needs: [quality_gate, deploy]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send Slack Notification
+        run: |
+          if [[ "${{ github.ref_name }}" == "test" && "${{ needs.quality_gate.result }}" != "success" ]]; then
+            STATUS="QUALITY FAILED ❌"
+            MSG="SonarQube Quality Gate failed. Deployment Stopped."
+          elif [[ "${{ needs.deploy.result }}" == "success" ]]; then
+            STATUS="SUCCESS ✅"
+            MSG="Project deployed successfully on ${{ github.ref_name }}!"
+          else
+            STATUS="FAILED ❌"
+            MSG="Deployment failed or was skipped. Check GitHub Actions logs."
+          fi
+
+          curl -X POST -H 'Content-type: application/json' \
+          --data "{\"text\": \"*Project:* ${{ env.PROJECT }}\n*Branch:* ${{ github.ref_name }}\n*Status:* $STATUS\n*Detail:* $MSG\"}" \
+          "${{ secrets.SLACK_WEBHOOK }}"

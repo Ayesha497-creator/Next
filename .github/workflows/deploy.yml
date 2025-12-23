@@ -51,8 +51,7 @@ jobs:
             APP_PATH="/var/www/html/${{ github.ref_name }}/${{ env.PROJECT }}"
             
             cd $APP_PATH
-            git fetch origin ${{ github.ref_name }}
-            git reset --hard origin/${{ github.ref_name }}
+            git pull origin ${{ github.ref_name }}
 
             if [[ "${{ env.PROJECT }}" == "Next" || "${{ env.PROJECT }}" == "vue" ]]; then
                 npm run build
@@ -71,7 +70,7 @@ jobs:
         run: |
           if [[ "${{ needs.quality_gate.result }}" != "success" ]]; then
             STATUS="QUALITY FAILED ❌"
-            MSG="Deployment Blocked: SonarQube Quality Gate failed on branch ${{ env.TEST_BRANCH }}."
+            MSG=" SonarQube Quality Gate failed on branch ${{ env.TEST_BRANCH }}."
           
           elif [[ "${{ needs.deploy.result }}" == "skipped" ]]; then
             STATUS="SKIPPED ⚠️"
@@ -79,11 +78,11 @@ jobs:
           
           elif [[ "${{ needs.deploy.result }}" != "success" ]]; then
             STATUS="DEPLOY FAILED ❌"
-            MSG="Quality Gate passed, but SSH deployment failed on server."
+            MSG="Quality Gate passed, but git pull or build failed on server."
           
           else
             STATUS="SUCCESS ✅"
-            MSG="Project deployed successfully to server!"
+            MSG="Project deployed successfully using git pull!"
           fi
 
           curl -X POST -H 'Content-type: application/json' \

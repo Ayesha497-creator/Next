@@ -2,24 +2,24 @@ name: Multi-Project Deployment
 
 on:
   push:
-    branches: ["**"]
+    branches: ["test", "development", "stage"]
 
 env:
   PROJECT: "Next"
-  TEST_BRANCH: "test"
   SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
   SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
 
 jobs:
   quality_gate:
+    # Yeh job sirf 'test' branch par chalegi
+    if: github.ref_name == 'test'
     runs-on: ubuntu-latest
     outputs:
       sonar_status: ${{ steps.sonar.outputs.check-status }}
     steps:
-      - name: Checkout Test Branch
+      - name: Checkout Code
         uses: actions/checkout@v4
         with:
-          ref: ${{ env.TEST_BRANCH }}
           fetch-depth: 0
 
       - name: Sonar Scan
@@ -36,8 +36,16 @@ jobs:
         timeout-minutes: 5
 
   deploy:
+    # Logic: 
+    # 1. Agar 'test' branch hai, to quality_gate success hona chahiye.
+    # 2. Agar dev ya stage branch hai, to bina quality_gate ke chale.
     needs: quality_gate
-    if: needs.quality_gate.outputs.sonar_status == 'OK'
+    if: |
+      always() && 
+      (
+        (github.ref_name == 'test' && needs.quality_gate.result == 'success') ||
+        (github.ref_name == 'development' || github.ref_name == 'stage')
+      )
     runs-on: ubuntu-latest
     steps:
       - name: Remote SSH Deployment
@@ -49,19 +57,18 @@ jobs:
           script: |
             set -e
             APP_PATH="/var/www/html/${{ github.ref_name }}/${{ env.PROJECT }}"
-            
             cd $APP_PATH
             git pull origin ${{ github.ref_name }}
 
-           case "${{ env.PROJECT }}" in
-            "Next"|"vue")
-             npm run build
-          [[ "${{ env.PROJECT }}" == "Next" ]] && pm2 restart "${{ env.PROJECT }}-${{ github.ref_name }}" && pm2 save
-              ;;
-        "laravel")
-        php artisan optimize
-        ;;
-    esac
+            case "${{ env.PROJECT }}" in
+              "Next"|"vue")
+                npm run build
+                [[ "${{ env.PROJECT }}" == "Next" ]] && pm2 restart "${{ env.PROJECT }}-${{ github.ref_name }}" && pm2 save
+                ;;
+              "laravel")
+                php artisan optimize
+                ;;
+            esac
 
   notify:
     needs: [quality_gate, deploy]
@@ -70,21 +77,15 @@ jobs:
     steps:
       - name: Send Slack Notification
         run: |
-          if [[ "${{ needs.quality_gate.result }}" != "success" ]]; then
+          if [[ "${{ github.ref_name }}" == "test" && "${{ needs.quality_gate.result }}" != "success" ]]; then
             STATUS="QUALITY FAILED ❌"
-            MSG=" SonarQube Quality Gate failed on branch ${{ env.TEST_BRANCH }}."
-          
-          elif [[ "${{ needs.deploy.result }}" == "skipped" ]]; then
-            STATUS="SKIPPED ⚠️"
-            MSG="Quality Gate was OK, but Deployment was skipped (Check conditions)."
-          
-          elif [[ "${{ needs.deploy.result }}" != "success" ]]; then
-            STATUS="DEPLOY FAILED ❌"
-            MSG="Quality Gate passed, but git pull or build failed on server."
-          
-          else
+            MSG="SonarQube Quality Gate failed. Deployment Stopped."
+          elif [[ "${{ needs.deploy.result }}" == "success" ]]; then
             STATUS="SUCCESS ✅"
-            MSG="Project deployed successfully using git pull!"
+            MSG="Project deployed successfully on ${{ github.ref_name }}!"
+          else
+            STATUS="FAILED ❌"
+            MSG="Deployment failed or was skipped. Check GitHub Actions logs."
           fi
 
           curl -X POST -H 'Content-type: application/json' \

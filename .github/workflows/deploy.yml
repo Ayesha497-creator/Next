@@ -53,13 +53,15 @@ jobs:
             cd $APP_PATH
             git pull origin ${{ github.ref_name }}
 
-            if [[ "${{ env.PROJECT }}" == "Next" || "${{ env.PROJECT }}" == "vue" ]]; then
-                npm run build
-                pm2 restart "${{ env.PROJECT }}-${{ github.ref_name }}" 
-                pm2 save
-            elif [[ "${{ env.PROJECT }}" == "laravel" ]]; then
-                php artisan optimize
-            fi
+           case "${{ env.PROJECT }}" in
+            "Next"|"vue")
+             npm run build
+          [[ "${{ env.PROJECT }}" == "Next" ]] && pm2 restart "${{ env.PROJECT }}-${{ github.ref_name }}" && pm2 save
+              ;;
+        "laravel")
+        php artisan optimize
+        ;;
+    esac
 
   notify:
     needs: [quality_gate, deploy]

@@ -5,23 +5,23 @@ on:
     branches: ["**"]
 
 env:
-  PROJECT: "Next"              
-  TEST_BRANCH: "test" 
+  PROJECT: "Next"
+  TEST_BRANCH: "test"
   SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
   SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
 
 jobs:
-  pipeline:
+  quality_gate:
     runs-on: ubuntu-latest
+    outputs:
+      sonar_status: ${{ steps.sonar.outputs.check-status }}
     steps:
-      - name: Checkout Test
+      - name: Checkout Test Branch
         uses: actions/checkout@v4
         with:
           ref: ${{ env.TEST_BRANCH }}
           fetch-depth: 0
-          clean: true
-      - name: Verify Branch
-        run: git log -1 --format=%H
+
       - name: Sonar Scan
         uses: sonarsource/sonarqube-scan-action@v2
         with:
@@ -29,54 +29,55 @@ jobs:
             -Dsonar.projectKey=${{ env.PROJECT }}-project
             -Dsonar.sources=.
             -Dsonar.exclusions=**/node_modules/**,**/vendor/**
+
       - name: Quality Gate
         id: sonar
         uses: sonarsource/sonarqube-quality-gate-action@v1
         timeout-minutes: 5
 
-      - name: Checkout Current
-        if: steps.sonar.outputs.check-status == 'OK'
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ github.ref_name }}
-          clean: false
-
-      - name: Deploy
-        if: steps.sonar.outputs.check-status == 'OK'
+  deploy:
+    needs: quality_gate
+    if: needs.quality_gate.outputs.sonar_status == 'OK'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Remote SSH Deployment
         uses: appleboy/ssh-action@v1.0.3
         with:
-        host: ${{ vars.REMOTE_HOST }}       
-        username: ${{ vars.REMOTE_USER }}
-       key: ${{ secrets.SSH_PRIVATE_KEY }}
+          host: ${{ vars.REMOTE_HOST }}
+          username: ${{ vars.REMOTE_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
             set -e
-            cd /var/www/html/${{ github.ref_name }}/${{ env.PROJECT }}
+            APP_PATH="/var/www/html/${{ github.ref_name }}/${{ env.PROJECT }}"
+            
+            cd $APP_PATH
             git fetch origin ${{ github.ref_name }}
             git reset --hard origin/${{ github.ref_name }}
 
-            case "${{ env.PROJECT }}" in
-              "Next"|"vue")
+            if [[ "${{ env.PROJECT }}" == "Next" || "${{ env.PROJECT }}" == "vue" ]]; then
                 npm run build
-                pm2 restart "${{ env.PROJECT }}-${{ github.ref_name }}"
+                pm2 restart "${{ env.PROJECT }}-${{ github.ref_name }}" 
                 pm2 save
-                ;;
-              "laravel")
+            elif [[ "${{ env.PROJECT }}" == "laravel" ]]; then
                 php artisan optimize
-                ;;
-            esac
+            fi
 
-      - name: Notify
-        if: always()
+  notify:
+    needs: [quality_gate, deploy]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send Slack Notification
         run: |
-          GATE_STATUS="${{ steps.sonar.outputs.check-status }}"
-          
-          if [[ -z "$GATE_STATUS" || "$GATE_STATUS" != "OK" ]]; then
-            FINAL_STATUS="FAILED ❌"
-            MSG="Deployment Blocked: Code Quality failed."
-          else
-            FINAL_STATUS="PASSED ✅"
+          # Use needs context to determine overall success
+          if [[ "${{ needs.deploy.result }}" == "success" ]]; then
+            STATUS="PASSED ✅"
             MSG="Deployment Successful!"
+          else
+            STATUS="FAILED ❌"
+            MSG="Deployment Blocked or Failed. Check Sonar/Logs."
           fi
-
-          PAYLOAD="{\"text\": \"*Project:* ${{ env.PROJECT }}\n*Branch:* ${{ github.ref_name }}\n*Sonar Status:* $FINAL_STATUS\n*Detail:* $MSG\"}"
-          curl -X POST -H 'Content-type: application/json' --data "$PAYLOAD" "${{ secrets.SLACK_WEBHOOK }}"
+          
+          curl -X POST -H 'Content-type: application/json' \
+          --data "{\"text\": \"*Project:* ${{ env.PROJECT }}\n*Branch:* ${{ github.ref_name }}\n*Status:* $STATUS\n*Detail:* $MSG\"}" \
+          "${{ secrets.SLACK_WEBHOOK }}"

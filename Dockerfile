@@ -1,6 +1,20 @@
+
 FROM node:18-alpine
+
+RUN apk add --no-cache libc6-compat
+
 WORKDIR /var/www/html
+
+COPY package*.json ./
+RUN npm install
+
 COPY . .
-RUN npm install && npm run build
-EXPOSE 80
-CMD ["npm", "start", "--", "-p", "80"]
+
+RUN npm run build
+
+EXPOSE 3000
+
+ENV NODE_ENV production
+ENV PORT 3000
+
+CMD ["npm", "start"]

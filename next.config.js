@@ -1,6 +1,11 @@
 /** @type {import('next').NextConfig} */
 
 const basePath = process.env.NEXT_PUBLIC_BASE_PATH || '';
+const ENV = process.env.NEXT_PUBLIC_ENV; // set by pipeline: development/test/stage
+
+let basePath = '/Next'; // default for development
+if (ENV === 'test') basePath = '/Next/test';
+if (ENV === 'stage') basePath = '/Next/stage';
 
 const nextConfig = {
   reactStrictMode: true,
@@ -19,3 +24,7 @@ const nextConfig = {
 }
 
 module.exports = nextConfig
+  assetPrefix: basePath,
+}
+
+module.exports = nextConfig;

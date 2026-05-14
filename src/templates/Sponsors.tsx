@@ -1,6 +1,6 @@
-import Image from 'next/image';
+import Image from 'next/image'
 
-import { Section } from '@/layout/Section';
+import { Section } from '@/layout/Section'
 
 const Sponsors = () => (
   <Section
@@ -85,6 +85,6 @@ const Sponsors = () => (
       </tbody>
     </table>
   </Section>
-);
+)
 
-export { Sponsors };
+export { Sponsors }
